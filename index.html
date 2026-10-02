@@ -268,6 +268,11 @@
       </div>
 
       <div class="field">
+        <label>Área de jogo <span id="fieldVal">100%</span></label>
+        <input type="range" id="fieldSize" min="0.35" max="1" step="0.05" value="1">
+      </div>
+
+      <div class="field">
         <label>Sensibilidade <span id="sensVal">1.00</span></label>
         <input type="range" id="sens" min="0.1" max="3" step="0.05" value="1">
       </div>
@@ -379,6 +384,7 @@ const settings = {
   sens: 1,
   lock: true,
   sound: true,
+  fieldSize: 1,     // <-- NOVO: 1 = 100%, 0.35 = 35%
   crosshair: { color: "#00e5ff", size: 12, gap: 5, thickness: 2, dot: true }
 };
 
@@ -386,7 +392,11 @@ const settings = {
   const s = store.get("settings", null);
   if (s) {
     Object.assign(settings, s);
-    settings.crosshair = Object.assign({ color: "#00e5ff", size: 12, gap: 5, thickness: 2, dot: true }, s.crosshair || {});
+    if (typeof s.fieldSize !== "number") settings.fieldSize = 1;
+    settings.crosshair = Object.assign(
+      { color: "#00e5ff", size: 12, gap: 5, thickness: 2, dot: true },
+      s.crosshair || {}
+    );
   }
 })();
 
@@ -404,7 +414,7 @@ let W = 0, H = 0, DPR = 1, bg = null;
    ========================================================= */
 const G = {
   mode: "gridshot",
-  phase: "menu",           // menu | playing | paused | over
+  phase: "menu",
   timeLeft: 0,
   score: 0,
   hits: 0,
@@ -487,15 +497,21 @@ function resize() {
 window.addEventListener("resize", resize);
 
 /* =========================================================
-   ÁREA DE JOGO
+   ÁREA DE JOGO  (agora respeita o settings.fieldSize)
    ========================================================= */
 function playArea() {
   const top = 86, bottom = 34, side = 34;
+  const availW = W - side * 2;
+  const availH = H - top - bottom;
+  const scale = settings.fieldSize;
+
+  const w = Math.max(140, availW * scale);
+  const h = Math.max(140, availH * scale);
+
   return {
-    x: side,
-    y: top,
-    w: Math.max(120, W - side * 2),
-    h: Math.max(120, H - top - bottom)
+    x: side + (availW - w) / 2,
+    y: top + (availH - h) / 2,
+    w, h
   };
 }
 
@@ -718,7 +734,6 @@ function update(dt) {
     return;
   }
 
-  // Alvos com tempo de vida (Reflex)
   if (cfg.lifetime) {
     for (const t of G.targets.slice()) {
       if (now - t.born > cfg.lifetime) {
@@ -728,7 +743,6 @@ function update(dt) {
     }
   }
 
-  // Tracking
   if (cfg.kind === "track") {
     const a = playArea();
     for (const t of G.targets) {
@@ -740,7 +754,6 @@ function update(dt) {
       if (t.y < a.y + t.r) { t.y = a.y + t.r; t.vy = Math.abs(t.vy); }
       if (t.y > a.y + a.h - t.r) { t.y = a.y + a.h - t.r; t.vy = -Math.abs(t.vy); }
 
-      // pequena variação orgânica
       t.vx += rand(-140, 140) * dt;
       t.vy += rand(-140, 140) * dt;
 
@@ -764,7 +777,6 @@ function update(dt) {
     }
   }
 
-  // Limpa efeitos
   G.fx = G.fx.filter(f => now - f.t < 620);
 }
 
@@ -799,7 +811,6 @@ function drawTarget(t, now) {
   ctx.save();
   ctx.globalAlpha = clamp(ease * 1.3, 0, 1);
 
-  // brilho externo
   const glowR = r * 2.4;
   const gg = ctx.createRadialGradient(t.x, t.y, r * 0.3, t.x, t.y, glowR);
   if (tracking) {
@@ -814,7 +825,6 @@ function drawTarget(t, now) {
   ctx.arc(t.x, t.y, glowR, 0, Math.PI * 2);
   ctx.fill();
 
-  // corpo
   const body = ctx.createRadialGradient(
     t.x - r * 0.35, t.y - r * 0.4, r * 0.08,
     t.x, t.y, r
@@ -833,12 +843,10 @@ function drawTarget(t, now) {
   ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
   ctx.fill();
 
-  // anel
   ctx.lineWidth = 2;
   ctx.strokeStyle = tracking ? "rgba(230,255,245,0.95)" : "rgba(220,250,255,0.85)";
   ctx.stroke();
 
-  // ponto interno
   ctx.fillStyle = "rgba(255,255,255,0.9)";
   ctx.beginPath();
   ctx.arc(t.x, t.y, Math.max(1.2, r * 0.15), 0, Math.PI * 2);
@@ -1101,6 +1109,9 @@ function syncInputs() {
   $("#sens").value = settings.sens;
   $("#sensVal").textContent = Number(settings.sens).toFixed(2);
 
+  $("#fieldSize").value = settings.fieldSize;
+  $("#fieldVal").textContent = Math.round(settings.fieldSize * 100) + "%";
+
   $("#chSize").value = settings.crosshair.size;
   $("#sizeVal").textContent = settings.crosshair.size;
 
@@ -1123,6 +1134,12 @@ $("#durChips").addEventListener("click", (e) => {
   settings.duration = Number(b.dataset.dur);
   saveSettings();
   syncInputs();
+});
+
+$("#fieldSize").addEventListener("input", (e) => {
+  settings.fieldSize = Number(e.target.value);
+  $("#fieldVal").textContent = Math.round(settings.fieldSize * 100) + "%";
+  saveSettings();
 });
 
 $("#sens").addEventListener("input", (e) => {
